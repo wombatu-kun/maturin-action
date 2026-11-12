@@ -46991,6 +46991,23 @@ function getBeforeScript() {
     }
     return '';
 }
+async function dockerPull(image) {
+    const maxAttempts = 5;
+    for (let attempt = 1;; attempt++) {
+        const exitCode = await exec_exec('docker', ['pull', image], {
+            ignoreReturnCode: true
+        });
+        if (exitCode === 0) {
+            return;
+        }
+        if (attempt === maxAttempts) {
+            throw new Error(`maturin: 'docker pull' returned ${exitCode} after ${maxAttempts} attempts`);
+        }
+        const delaySeconds = 10 * 2 ** (attempt - 1);
+        warning(`'docker pull ${image}' returned ${exitCode}, retrying in ${delaySeconds}s (attempt ${attempt} of ${maxAttempts})`);
+        await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+    }
+}
 async function dockerBuild(container, maturinRelease, hostHomeMount, args) {
     var _a;
     const target = getRustTarget(args);
@@ -47023,10 +47040,7 @@ async function dockerBuild(container, maturinRelease, hostHomeMount, args) {
     if (!imageExists) {
         startGroup('Pull Docker image');
         info(`Using ${image} Docker image`);
-        const exitCode = await exec_exec('docker', ['pull', image]);
-        if (exitCode !== 0) {
-            throw new Error(`maturin: 'docker pull' returned ${exitCode}`);
-        }
+        await dockerPull(image);
         endGroup();
     }
     else {
